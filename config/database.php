@@ -6,7 +6,9 @@
  */
 function getConnection()
 {
-  return mysqli_connect("db", "admin", "password", "nutrio", 3306);
+  $user = getenv('DB_USER');
+  $password = getenv('DB_PASSWORD');
+  return mysqli_connect("db", $user, $password, "nutrio", 3306);
 }
 
 /**

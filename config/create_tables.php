@@ -2,8 +2,10 @@
 require __DIR__ . '/database.php';
 
 // This script will run after building the docker devcontainer
+$user = getenv('DB_USER');
+$password = getenv('DB_PASSWORD');
 
-$mysqli = mysqli_connect("db", "admin", "password", "nutrio", 3306);
+$mysqli = mysqli_connect("db", $user, $password, "nutrio", 3306);
 
 $users_query = "CREATE TABLE IF NOT EXISTS users (user_id INT NOT NULL PRIMARY KEY AUTO_INCREMENT,user_name text NOT NULL,email text NOT NULL,password_hash text NOT NULL, profile_pic text)";
 $user_info_query = "CREATE TABLE IF NOT EXISTS user_info (user_id INT NOT NULL,height FLOAT NOT NULL,weight FLOAT NOT NULL,age INT NOT NULL,sex ENUM('MALE', 'FEMALE'),activityLevel FLOAT NOT NULL,targetCAL FLOAT NOT NULL,targetPROTIEN FLOAT NOT NULL,targetCARBS FLOAT NOT NULL,targetFAT FLOAT NOT NULL,goal ENUM('CUT', 'BULK', 'MAINTAIN') NOT NULL,focus ENUM('PROTEIN', 'CARB', 'FAT') NOT NULL, diet ENUM('Gluten Free', 'Ketogenic', 'Vegetarian', 'Vegan', 'None'), PRIMARY KEY (user_id),CONSTRAINT fk_user_info_user_id FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE)";

@@ -7,41 +7,42 @@ services:
       - ./:/var/www/html
     environment:
       WAIT_HOSTS: db:3306
+      DB_USER: ${NUTRIO_MYSQL_USER}
+      DB_PASSWORD: ${NUTRIO_MYSQL_PASSWORD}
     ports:
       - 8080:80
     depends_on:
       - db
 
-    
   db:
-      image: mysql
-      ports:
-          - 3306:3306
-      command: --default-authentication-plugin=mysql_native_password
-      restart: always
-      environment:
-          MYSQL_USER: admin
-          MYSQL_PASSWORD: password
-          MYSQL_DATABASE: nutrio
-          MYSQL_ROOT_PASSWORD: password
-      volumes:
-          - "test_db:/var/lib/mysql"
-          
+    image: mysql
+    ports:
+      - 3306:3306
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    environment:
+      MYSQL_USER: ${NUTRIO_MYSQL_USER}
+      MYSQL_PASSWORD: ${NUTRIO_MYSQL_PASSWORD}
+      MYSQL_DATABASE: nutrio
+      MYSQL_ROOT_PASSWORD: ${NUTRIO_MYSQL_ROOT_PASSWORD}
+    volumes:
+      - "test_db:/var/lib/mysql"
+
   # for php myadmin goto http://localhost:8181
   db_admin:
-      image: phpmyadmin/phpmyadmin
-      ports:
-          - 8181:80
-      restart: "on-failure"
-      depends_on:
-          - db
-      links:
-          - db
-      environment:
-          PMA_HOST: db
-          PMA_PORT: 3306
-          PMA_USER: admin
-          PMA_PASSWORD: password
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - 8181:80
+    restart: "on-failure"
+    depends_on:
+      - db
+    links:
+      - db
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: ${NUTRIO_MYSQL_USER}
+      PMA_PASSWORD: ${NUTRIO_MYSQL_PASSWORD}
 
 volumes:
-    test_db:
+  test_db:
