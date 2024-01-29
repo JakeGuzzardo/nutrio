@@ -3,7 +3,7 @@ name: Deploy to Production
 on:
   push:
     branches:
-      - main
+      - master
 
 jobs:
   deploy:
@@ -15,14 +15,16 @@ jobs:
 
     - name: Deploy to server
       env:
-        SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-        HOST: 159.223.186.15
-        USER: root
+        SSH_KEY: ${{ secrets.SSH_KEY }}
+        HOST: 3.84.113.251
+        USER: ec2-user
       run: |
-        sudo apt-get install -y sshpass
+        mkdir -p ~/.ssh/
+        echo "$SSH_KEY" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
         # SSH commands below
-        sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $USER@$HOST "
-          cd /root/nutrio;
+        ssh -o StrictHostKeyChecking=no $USER@$HOST "
+          cd /home/ec2-user/nutrio;
           git stash;
           git pull;
         "
