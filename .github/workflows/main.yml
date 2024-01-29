@@ -16,7 +16,7 @@ jobs:
     - name: Deploy to server
       env:
         SSH_PASSWORD: ${{ secrets.SSH_PASSWORD }}
-        HOST: 18.118.198.248
+        HOST: 159.223.186.15
         USER: root
       run: |
         sudo apt-get install -y sshpass
