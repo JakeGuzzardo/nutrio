@@ -22,9 +22,7 @@ jobs:
         sudo apt-get install -y sshpass
         # SSH commands below
         sshpass -p $SSH_PASSWORD ssh -o StrictHostKeyChecking=no $USER@$HOST "
-          cd /home/root/nutrio;
+          cd /root/nutrio;
           git stash;
           git pull;
-          docker-compose down;
-          docker-compose up -d --build --force-recreate;
         "
