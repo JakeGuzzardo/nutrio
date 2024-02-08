@@ -19,13 +19,19 @@ function getConnection()
 function getRestrictionId(string $restriction_name)
 {
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "SELECT restriction_id FROM restrictions WHERE restriction_name = '$restriction_name';");
+  $statement = $mysqli->prepare("SELECT restriction_id FROM restrictions WHERE restriction_name = ?");
+  $statement->bind_param("s", $restriction_name);
+  $statement->execute();
+  $statement->store_result($result);
+  $statement->close();
+  #$result = mysqli_query($mysqli, "SELECT restriction_id FROM restrictions WHERE restriction_name = '$restriction_name';");
   $row = mysqli_fetch_row($result);
   return $row[0];
 }
 
 function reccomendExercise(string $user_name, int $num)
 {
+  //injection safe
   $mysqli = getConnection();
   $user_id = getIDFromUsername($user_name);
   $user_info = getUserInfo($user_name);
@@ -57,6 +63,7 @@ function reccomendExercise(string $user_name, int $num)
  */
 function getHistory(string $user_name)
 {
+  //injection safe
   $user_id = getIDFromUsername($user_name);
   $mysqli = getConnection();
   $result = mysqli_query($mysqli, "SELECT * FROM daily_intake WHERE user_id='$user_id'");
@@ -77,7 +84,10 @@ function del(string $user_name, string $id)
 {
   $user_id = getIDFromUsername($user_name);
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "DELETE FROM daily_intake WHERE user_id='$user_id' AND meal_id='$id'");
+  $statement = $mysqli->prepare( "DELETE FROM daily_intake WHERE user_id = ? AND meal_id = ?");
+  $statement->bind_param("ss", $user_id, $id);
+  $result = $statement->execute();
+  $statement->close();
 
   if ($result) {
     return true;
@@ -102,8 +112,12 @@ function edit(string $user_name, string $meal_name, string $date, float $calorie
 {
   $user_id = getIDFromUsername($user_name);
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "UPDATE daily_intake SET meal_name = '$meal_name', date = '$date', calories = '$calories', protein ='$protein', carbs = '$carbs', fat = '$fat' WHERE user_id='$user_id' AND meal_id='$mId'");
-  // echo $result;
+  $preped = $mysqli->prepare("UPDATE daily_intake SET meal_name = ?, date = ?, calories = ?, protein = ?, carbs = ?, fat = ?
+   WHERE user_id = ? AND meal_id = ?");
+
+  $preped->bind_param("ssddddsd", $meal_name, $date, $calories, $protein, $carbs, $fat, $user_id, $mId);
+  $result = $preped->execute();
+  $preped->close();
   if ($result) {
     return true;
   } else {
@@ -113,20 +127,38 @@ function edit(string $user_name, string $meal_name, string $date, float $calorie
 
 function setProfilePic(string $user, string $pfp)
 {
+  #function not currently used
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "UPDATE users SET profile_pic='$pfp' WHERE user_name = '$user'");
+  $statement = $mysqli->prepare("UPDATE users SET profile_pic = ? WHERE user_name = ?");
+  $statement->bind_param("ss", $pfp, $user);
+  $result = $statement->execute();
+  $statement->close();
+
+  #$result = mysqli_query($mysqli, "UPDATE users SET profile_pic='$pfp' WHERE user_name = '$user'");
 }
 
 function getProfilePic(string $user)
 {
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "SELECT profile_pic FROM users WHERE user_name='$user'");
-  $row = mysqli_fetch_row($result);
+  $statement = $mysqli->prepare("SELECT profile_pic FROM users WHERE user_name= ?");
+  $statement->bind_param("s", $user);
+  $statement->execute();
+  $statement->bind_result($profilePic);
 
-  if ($row == NULL || $row[0] == "") {
+  if($statement->fetch()){
+    #$row = mysqli_fetch_row($result);
+    if ($row == NULL || $row[0] == "") {
+      return '/public/uploads/no-pfp.png';
+    }
+    return substr($row[0], 4); # substr to remove /web
+
+  } else {
     return '/public/uploads/no-pfp.png';
   }
-  return substr($row[0], 4); # substr to remove /web
+  $statement->close();
+
+  #$result = mysqli_query($mysqli, "SELECT profile_pic FROM users WHERE user_name='$user'");
+  
 }
 
 
@@ -138,9 +170,21 @@ function getProfilePic(string $user)
 function getRestrictionName(int $restriction_id)
 {
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "SELECT restriction_name FROM restrictions WHERE restriction_id = '$restriction_id';");
-  $row = mysqli_fetch_row($result);
-  return $row[0];
+  $statement = $mysqli->prepare("SELECT restriction_name FROM restrictions WHERE restriction_id = ?");
+  
+  $statement->bind_param("i", $restriction_id);
+  $statement->execute();
+  $statement->bind_result($restriction);
+  
+  if($statement->fetch()){
+    $statement->close();
+    return $restriction;
+  }
+  $statement->close();
+  return null;
+  // $result = mysqli_query($mysqli, "SELECT restriction_name FROM restrictions WHERE restriction_id = '$restriction_id';");
+  // $row = mysqli_fetch_row($result);
+  // return $row[0];
 }
 
 /**
@@ -152,16 +196,34 @@ function getRestrictionName(int $restriction_id)
 function addRestrictions(string $user_name, array $restrictions)
 {
   $user_id = getIDFromUsername($user_name);
-  // print_r($user_id);
   $mysqli = getConnection();
-  for ($i = 0; $i < count($restrictions); $i++) {
-    $restriction = $restrictions[$i];
-    $result = mysqli_query($mysqli, "SELECT restriction_id FROM restrictions WHERE restriction_name = '$restriction';");
-    $row = mysqli_fetch_row($result);
-    $restriction_id = $row[0];
-    mysqli_query($mysqli, "INSERT IGNORE INTO user_restrictions (user_id, restriction_id) VALUES ('$user_id', '$restriction_id');");
+
+  // Prepare the SELECT statement
+  $selectStmt = $mysqli->prepare("SELECT restriction_id FROM restrictions WHERE restriction_name = ?");
+  $insertStmt = $mysqli->prepare("INSERT IGNORE INTO user_restrictions (user_id, restriction_id) VALUES (?, ?)");
+
+  foreach ($restrictions as $restriction) {
+      $selectStmt->bind_param("s", $restriction);
+
+      if (!$selectStmt->execute()) {
+        die("Execute failed: " . $selectStmt->error);
+    }
+      $selectStmt->store_result();
+      $selectStmt->bind_result($restrictionID);
+
+      if ($selectStmt->fetch()) {
+          $insertStmt->bind_param("ii", $user_id, $restrictionID);
+
+          if(!$insertStmt->execute()) {
+            die("Insertion failed: " . $insertStmt->error);
+          }
+      }
+      $selectStmt->free_result();
   }
-  return true;
+
+  $selectStmt->close();
+  $insertStmt->close();
+return true;
 }
 
 /**
@@ -174,13 +236,32 @@ function removeRestriction(string $user_name, array $restrictions)
 {
   $user_id = getIDFromUsername($user_name);
   $mysqli = getConnection();
-  for ($i = 0; $i < count($restrictions); $i++) {
-    $restriction = $restrictions[$i];
-    $result = mysqli_query($mysqli, "SELECT restriction_id FROM restrictions WHERE restriction_name = '$restriction';");
-    $row = mysqli_fetch_row($result);
-    $restriction_id = $row[0];
-    mysqli_query($mysqli, "DELETE FROM user_restrictions WHERE user_id = '$user_id' AND restriction_id = '$restriction_id';");
+
+  $selectStmt = $mysqli->prepare("SELECT restriction_id FROM restrictions WHERE restriction_name = ? ");
+  $deleteStmt = $mysqli->prepare("DELETE FROM user_restrictions WHERE user_id = ? AND restriction_id = ? ");
+
+
+  foreach ($restrictions as $restriction) {
+    $selectStmt->bind_param("s", $restriction);
+    if(!$selectStmt->execute()){
+      die("Select restricions failed: " . $selectStmt->error);
+    }
+
+    $selectStmt->store_result();
+    $selectStmt->bind_result($restrictionID);
+
+    if($selectStmt->fetch()){
+      $deleteStmt->bind_param("ii", $user_id, $restrictionID);
+
+      if(!$deleteStmt->execute()){
+        die("Deletion failed: " . $insertStmt->error);
+      }
+    }
+    $selectStmt->free_result();
   }
+
+  $selectStmt->close();
+  $deleteStmt->close();
   return true;
 }
 
@@ -193,11 +274,16 @@ function getRestrictions(string $user_name)
 {
   $user_id = getIDFromUsername($user_name);
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "SELECT r.restriction_name FROM restrictions r JOIN user_restrictions ur ON r.restriction_id = ur.restriction_id WHERE ur.user_id = '$user_id';");
+  $selectStmt = $mysqli->prepare("SELECT r.restriction_name FROM restrictions r JOIN user_restrictions ur ON r.restriction_id = ur.restriction_id WHERE ur.user_id = ? " );
+  $selectStmt->bind_param("i", $user_id);
+  $selectStmt->execute();
+  $selectStmt->bind_result($restriction);
   $restrictions = array();
-  while ($row = mysqli_fetch_row($result)) {
-    array_push($restrictions, $row[0]);
+
+  while($selectStmt->fetch()){
+    array_push($restrictions, $restriction);
   }
+  $selectStmt->close();
   return $restrictions;
 }
 
@@ -210,9 +296,17 @@ function getRestrictions(string $user_name)
 function getIDFromUsername(string $user_name): int
 {
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "SELECT user_id FROM users WHERE user_name='$user_name'");
-  $row = mysqli_fetch_row($result);
-  return $row[0];
+  $selectStmt = $mysqli->prepare("SELECT user_id FROM users WHERE user_name= ? ");
+  $selectStmt->bind_param("s", $user_name);
+  $selectStmt->execute();
+  $selectStmt->bind_result($userId);
+
+  if($selectStmt->fetch()){
+    $selectStmt->close();
+    return $userId;
+  }
+  $selectStmt->close();
+  return NULL;
 }
 
 /**
@@ -222,6 +316,7 @@ function getIDFromUsername(string $user_name): int
  */
 function checkInitalLogin(string $user_name)
 {
+  //injection safe
   $mysqli = getConnection();
   $userID = getIDFromUsername($user_name);
   $result = mysqli_query($mysqli, "SELECT * FROM user_info WHERE user_id='$userID'");
@@ -239,24 +334,26 @@ function checkInitalLogin(string $user_name)
  * @param string $user_name The username of the user.
  * @param string $meal_name The name of the meal.
  * @param string $date In the format YYYY-MM-DD.
- * @param float $calroies The number of calories in the meal.
+ * @param float $calories The number of calories in the meal.
  * @param float $protein The number of grams of protein in the meal.
  * @param float $carbs The number of grams of carbs in the meal.
  * @param float $fat The number of grams of fat in the meal.
  * @return bool True if the meal was added successfully, false otherwise.
  */
-function trackCaloriesAndMacros(string $user_name, string $meal_name, string $date, float $calroies, float $protein, float $carbs, float $fat)
+function trackCaloriesAndMacros(string $user_name, string $meal_name, string $date, float $calories, float $protein, float $carbs, float $fat)
 {
-  // echo "HELLO! This probaly worked, but useres arent set up yet, so expect error";
   $user_id = getIDFromUsername($user_name);
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "INSERT INTO daily_intake (user_id, meal_name, date, calories, protein, carbs, fat) VALUES ('$user_id', '$meal_name', '$date', '$calroies', '$protein', '$carbs', '$fat')");
-  // echo $result;
-  if ($result) {
+
+  $insertStmt = $mysqli->prepare("INSERT INTO daily_intake (user_id, meal_name, date, calories, protein, carbs, fat) VALUES ( ? , ? , ? , ? , ? , ? , ? )");
+  $insertStmt->bind_param("issdddd", $user_id, $meal_name, $date, $calories, $protein, $carbs, $fat);
+  $result = $insertStmt->execute();
+  $insertStmt->close();
+
+  if($result){
     return true;
-  } else {
-    return false;
   }
+  return false;
 }
 
 /**
@@ -278,10 +375,10 @@ function getRemainingMacros(string $user_name)
   $todaysFat = 0;
 
   foreach ($dailyMacros as $macro) {
-    $todaysCarbs += $macro[2];
-    $todaysCals += $macro[0];
-    $todaysProtien += $macro[1];
-    $todaysFat += $macro[3];
+    $todaysCarbs += $macro['carbs']; #2
+    $todaysCals += $macro['calories']; #0
+    $todaysProtien += $macro['protein']; #1
+    $todaysFat += $macro['fat']; #3
   }
 
   $carbsLeft = $macros[1] - $todaysCarbs;
@@ -300,6 +397,7 @@ function getRemainingMacros(string $user_name)
  */
 function getCalorieGoals(string $user_name)
 {
+  //injection safe
   $user_id = getIDFromUsername($user_name);
   $mysqli = getConnection();
   $result = mysqli_query($mysqli, "SELECT targetCAL FROM user_info WHERE user_id='$user_id'");
@@ -315,6 +413,7 @@ function getCalorieGoals(string $user_name)
  */
 function getMacroGoals(string $user_name)
 {
+  //injection safe
   $user_id = getIDFromUsername($user_name);
   $mysqli = getConnection();
   $result = mysqli_query($mysqli, "SELECT targetPROTIEN, targetCARBS, targetFAT FROM user_info WHERE user_id='$user_id'");
@@ -332,12 +431,19 @@ function getDailyCalories(string $user_name, string $date)
 {
   $user_id = getIDFromUsername($user_name);
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "SELECT calories, protein, carbs, fat, meal_name FROM daily_intake WHERE user_id='$user_id' AND date='$date'");
+
+  $selectStmt = $mysqli->prepare("SELECT calories, protein, carbs, fat, meal_name FROM daily_intake WHERE user_id= ?  AND date= ? ");
+  $selectStmt->bind_param("is", $user_id, $date);
+  $selectStmt->execute();
+
+  $result = $selectStmt->get_result();
   $rows = array();
-  while ($row = mysqli_fetch_row($result)) {
+  while ($row = $result->fetch_assoc()) {
     $rows[] = $row;
   }
+  $selectStmt->close();
   return $rows;
+
 }
 
 
@@ -349,6 +455,7 @@ function getDailyCalories(string $user_name, string $date)
  */
 function getUserInfo(string $user_name)
 {
+  // injection safe
   $user_id = getIDFromUsername($user_name);
   $mysqli = getConnection();
   $result = mysqli_query($mysqli, "SELECT * FROM user_info WHERE user_id='$user_id'");
@@ -376,43 +483,78 @@ function updateUserInfo(string $user_name, int $height = NULL, int $weight = NUL
   $mysqli = getConnection();
   $user_id = getIDFromUsername($user_name);
   $query = "UPDATE user_info SET ";
+  $params = [];
+  $types = '';
+
   if ($height != NULL) {
-    $query .= "height='$height', ";
+    $query .= "height= ?, ";
+    $params[] = &$height;
+    $types .= 'i';
   }
   if ($weight != NULL) {
-    $query .= "weight='$weight', ";
+    $query .= "weight= ?, ";
+    $params[] = &$weight;
+    $types .= 'i';
   }
   if ($sex != NULL) {
-    $query .= "sex='$sex', ";
+    $query .= "sex= ?, ";
+    $params[] = &$sex;
+    $types .= 's';
   }
   if ($age != NULL) {
-    $query .= "age='$age', ";
+    $query .= "age= ?, ";
+    $params[] = &$age;
+    $types .= 'i';
   }
   if ($activityLvl != NULL) {
-    $query .= "activityLevel='$activityLvl', ";
+    $query .= "activityLevel= ?, ";
+    $params[] = &$activityLvl;
+    $types .= 'd';
   }
   if ($goal != NULL) {
-    $query .= "goal='$goal', ";
+    $query .= "goal= ?, ";
+    $params[] = &$goal;
+    $types .= 's';
   }
   if ($focus != NULL) {
-    $query .= "focus='$focus', ";
+    $query .= "focus= ?, ";
+    $params[] = &$focus;
+    $types .= 's';
   }
   if ($diet != NULL) {
-    $query .= "diet='$diet', ";
+    $query .= "diet= ?, ";
+    $params[] = &$diet;
+    $types .= 's';
   }
+
+  
 
 
   $query = substr($query, 0, -2);
-  $query .= " WHERE user_id='$user_id'";
+  $query .= " WHERE user_id= ?";
 
-  $result = mysqli_query($mysqli, $query);
+  $params[] = &$user_id;
+  $types .= 'i';
 
+  $stmt = $mysqli->prepare($query);
+  $stmt->bind_param($types, ...$params);
+  $stmt->execute();
+  $stmt->close();
 
+  //$result = mysqli_query($mysqli, $query);
 
-
+  //not injectable
   $user_info = getUserInfo($user_name);
 
-  $newGoals = calcualteGoals($user_info[1], $user_info[2], $user_info[3], $user_info[4], $user_info[5], $user_info[8], $user_info[9]);
+  $height = $user_info[1];
+  $weight = $user_info[2];
+  $age = $user_info[3];
+  $sex = $user_info[4];
+  $activityLevel = $user_info[5];
+  $goal = $user_info[10];
+  $focus = $user_info[11];
+
+  $newGoals = calcualteGoals($height, $weight, $age, $sex, $activityLevel, $goal, $focus);
 
   $query = "UPDATE user_info SET ";
   $query .= "targetCAL='$newGoals[0]', ";
@@ -451,8 +593,14 @@ function storeSurveyInformation(string $user_name, int $height, int $weight, str
   $targetCARBS = $goals[2];
   $targetFAT = $goals[3];
 
-  // SQL INJECTION?
-  $result = mysqli_query($mysqli, "INSERT INTO user_info (user_id, height, weight, age, sex, activityLevel, targetCAL, targetPROTIEN, targetCARBS, targetFAT, goal, focus) VALUES ('$userID', '$height', '$weight', '$age', '$sex', '$activityLvl', '$targetCAL', '$targetPROTIEN', '$targetCARBS', '$targetFAT', '$goal', '$focus')");
+  $stmt = $mysqli->prepare("INSERT INTO user_info (user_id, height, weight, age, sex, activityLevel, targetCAL, targetPROTIEN, targetCARBS, targetFAT, goal, focus) 
+  VALUES ( ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? , ? )");
+
+  $stmt->bind_param("iiiisdddddss", $userID, $height, $weight, $age, $sex, $activityLvl, $targetCAL, $targetPROTIEN, $targetCARBS, $targetFAT, $goal, $focus);
+  if(!$stmt->execute()){
+    die("Execution failed: " . $stmt->error);
+  }
+  $stmt->close();
 }
 
 function calcualteGoals($height, $weight, $age, $sex, $activityLvl, $goal, $focus)
@@ -495,13 +643,17 @@ function calcualteGoals($height, $weight, $age, $sex, $activityLvl, $goal, $focu
 function checkIfEmailUsed($email)
 {
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "SELECT * FROM users WHERE email='$email'");
-  $row = mysqli_fetch_row($result);
-  if ($row) {
+  $selectStmt = $mysqli->prepare("SELECT * FROM users WHERE email= ? ");
+  $selectStmt->bind_param("s", $email);
+  $selectStmt->execute();
+  $result = $selectStmt->get_result();
+
+  if($result->fetch_assoc()){
+    $selectStmt->close();
     return true;
-  } else {
-    return false;
   }
+  $selectStmt->close();
+  return false;
 }
 
 
@@ -513,13 +665,17 @@ function checkIfEmailUsed($email)
 function checkIfUserNameUsed($user_name)
 {
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "SELECT * FROM users WHERE user_name='$user_name'");
-  $row = mysqli_fetch_row($result);
-  if ($row) {
+  $selectStmt = $mysqli->prepare("SELECT * FROM users WHERE user_name= ? ");
+  $selectStmt->bind_param("s", $user_name);
+  $selectStmt->execute();
+  $result = $selectStmt->get_result();
+
+  if($result->fetch_assoc()){
+    $selectStmt->close();
     return true;
-  } else {
-    return false;
   }
+  $selectStmt->close();
+  return false;
 }
 
 /**
@@ -530,9 +686,14 @@ function checkIfUserNameUsed($user_name)
 function getEmail($user_name)
 {
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "SELECT email FROM users WHERE user_name='$user_name'");
-  $row = mysqli_fetch_row($result);
-  return $row[0];
+  $selectStmt = $mysqli->prepare("SELECT email FROM users WHERE user_name= ? ");
+  $selectStmt->bind_param("s", $user_name);
+  $selectStmt->bind_result($result);
+  $selectStmt->execute();
+
+  if($selectStmt->fetch()){
+    return $result;
+  }
 }
 
 /**
@@ -544,6 +705,7 @@ function getEmail($user_name)
  */
 function createUser($user_name, $email, $password)
 {
+  //injection safe
   $mysqli = getConnection();
 
   if (checkIfEmailUsed($email) || checkIfUserNameUsed($user_name)) {
@@ -564,19 +726,16 @@ function createUser($user_name, $email, $password)
 function checkLogin($user_name, $password)
 {
   $mysqli = getConnection();
-  $result = mysqli_query($mysqli, "SELECT password_hash FROM users WHERE user_name='$user_name'");
-  $row = mysqli_fetch_row($result);
-  if ($row) {
-    $hashed = $row[0];
+  $stmt = $mysqli->prepare("SELECT password_hash FROM users WHERE user_name= ? ");
+  $stmt->bind_param("s", $user_name);
+  $stmt->bind_result($result);
+  $stmt->execute();
+
+  if ($stmt->fetch()) {
+    $hashed = $result;
     if (password_verify($password, $hashed)) {
-      // echo "Login successful!<br>";
       return true;
-    } else {
-      // echo "Login failed! Password doesn't match!<br>";
-      return false;
-    }
-  } else {
-    // echo "Login failed! No user found with that email!<br>";
-    return false;
-  }
+    } 
+  }  
+return false;  
 }

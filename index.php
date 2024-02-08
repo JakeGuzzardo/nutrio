@@ -1,8 +1,6 @@
 <?php
 $request =  $_SERVER['REQUEST_URI'];
 
-echo "PISS";
-
 // echo $request;
 
 switch ($request) {

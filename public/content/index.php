@@ -101,13 +101,12 @@ require __DIR__ . "../../../config/database.php";
                         $output = "";
                         $meals = getDailyCalories($_SESSION['user_name'], date("y-m-d"));
                         for ($i = 0; $i < count($meals); $i++) {
-                            //dsaf
                             $meal = $meals[$i];
-                            $output .= "<tr><td> $meal[4] </td>";
-                            $output .= "<td class = 'tableCalories'>" . $meal[0] .  "</td>";
-                            $output .= "<td class = 'tableProtein'>" . $meal[1] .  "</td>";
-                            $output .= "<td class = 'tableCarbs'>" . $meal[2] .  "</td>";
-                            $output .= "<td class = 'tableFats'>" . $meal[3] .  "</td></tr>";
+                            $output .= "<tr><td>" . $meal['meal_name'] . "</td>";
+                            $output .= "<td class = 'tableCalories'>" . $meal['calories'] .  "</td>";
+                            $output .= "<td class = 'tableProtein'>" . $meal['protein'] .  "</td>";
+                            $output .= "<td class = 'tableCarbs'>" . $meal['carbs'] .  "</td>";
+                            $output .= "<td class = 'tableFats'>" . $meal['fat'] .  "</td></tr>";
                         }
 
                         echo $output;
